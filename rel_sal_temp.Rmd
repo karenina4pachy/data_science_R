@@ -1,0 +1,94 @@
+---
+title: "DAM TSG Project assignment - Analysis of relation between salinity and temperature"
+author: "Karenina Schröder"
+date: "2025-08-29"
+
+output: 
+  html_document:
+    number_sections: TRUE
+    toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Relation between temperature and salinity in TSG data from DAM Underway project
+
+```{r}
+# read file tsg_data_cleaned into dataframe
+data <- read.delim("tsg_data_cleaned.txt")
+```
+
+```{r}
+sal <- data$Sal
+temp <- data$Temp...C.
+```
+
+## Plotting salinity and temperature
+
+### Simple plot of salinity vs. temperature
+
+```{r}
+plot(sal, temp)
+```
+--> seems not to show linear relation
+
+### simple plot using ggplot 
+
+```{r}
+library(ggplot2)
+ggplot(mapping= aes(sal, temp)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+## Fitting a linear model of salinity and temperature values
+
+```{r}
+mod <- lm(temp~sal)
+summary(mod)
+```
+
+# Interpretation of results
+
+
+**summary(mod) returns:**
+
+
+![](./output_summary(mod).png)
+
+
+## Clarifying summary(mod) output
+
+
+- Intercept (3.77): When sal = 0, the predicted temp is 3.77.
+
+- sal coefficient (0.474): For every 1-unit increase in sal, temperature increases by approximately 0.474 degrees.
+
+--> Both coefficients are highly significant (p-value < 2e-16), suggesting strong evidence that sal is associated with temp.
+
+
+### Residuals
+
+- The median residual is close to 0 → good.
+
+- Residuals are wide-spread from -19 to +30 degrees --> big variation
+
+
+### Model Fit:
+
+- Residual standard error: 6.683 → The typical error in predictions is about 6.68 units of temperature.
+
+- R-squared: 0.2049 → Only ~20.5% of the variation in temp is explained by sal.
+
+- F-statistic: 862,800 (huge) with p-value < 2.2e-16 → The model as a whole is statistically significant.
+
+
+# Conclusion
+
+- The relationship between salinity and temperature is statistically significant, and temperature increases as salinity increases.
+
+- However, salinity only explains about 20.5% of the variation in temperature, so other factors are likely involved.
+
+- The model is very precise (tiny standard errors), but not very explanatory — common in large datasets with complex systems
