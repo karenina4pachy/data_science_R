@@ -4,8 +4,9 @@ author: "Karenina Schröder"
 date: "2025-08-22"
 output: 
   html_document:
-    number_sections: TRUE
     toc: TRUE
+    number_sections: TRUE
+    
 ---
 
 ```{r setup, include=FALSE}
