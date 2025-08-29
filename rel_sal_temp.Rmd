@@ -5,8 +5,9 @@ date: "2025-08-29"
 
 output: 
   html_document:
-    number_sections: TRUE
     toc: TRUE
+    number_sections: TRUE
+    
 ---
 
 ```{r setup, include=FALSE}
@@ -34,7 +35,7 @@ plot(sal, temp)
 ```
 --> seems not to show linear relation
 
-### simple plot using ggplot 
+### Simple plot using ggplot 
 
 ```{r}
 library(ggplot2)
