@@ -1,0 +1,189 @@
+---
+title: "DAM TSG Project assignment - Data download and cleaning"
+author: "Karenina Schröder"
+date: "2025-08-22"
+output: 
+  html_document:
+    number_sections: TRUE
+    toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+
+```{r}
+library(pangaear) 
+library(dplyr)   
+library(tidyr) 
+library(stringr)
+
+```
+
+# Query PANGAEA for TSG data from DAM Underway project
+
+```{r}
+query <- pg_search('project:DAM_Underway citation:title:"Continuous thermosalinograph oceanography along" citation:author:"Schlundt, Michael"') # return 10 entries
+query
+query <- pg_search('project:DAM_Underway citation:title:"Continuous thermosalinograph oceanography along" citation:author:"Schlundt, Michael"', count = 500)
+print(nrow(query)) # 147: below 500 (count)
+
+```
+
+## First look at metadata
+
+```{r}
+str(query)
+```
+
+# Download 147 datasets from query
+
+- Loop over query DOIs and save the data in that dataframe
+
+```{r}
+# Create an empty dataframe to store all TSG data
+tsg_data <- data.frame()
+
+# Loop over DOIs and attempt to download & append data to dataframe
+tryCatch({
+  for (i in seq_len(nrow(query))) {
+    tsg <- pg_data(query$doi[i])
+    tsg <- tsg[[1]]$data
+    tsg$DOI <- query$doi[i]
+    tsg_data <- dplyr::bind_rows(tsg_data, tsg)
+  }
+
+}, error = function(e) {
+  cat("An error occurred:", conditionMessage(e), "\n")
+})
+
+# make a copy pf tsg_data for avoiding new downloads every time something goes wrong
+saveRDS(tsg_data, "daten_backup.rds")
+# Einlesen: tsg_data <- readRDS("daten_backup.rds")
+tsg_data_backup <- tsg_data
+```
+
+## First look at tsg_data
+
+```{r}
+print(class(tsg_data))
+sum(is.na(tsg_data$DOI))
+sum(is.na(tsg_data$latitude))
+sum(is.na(tsg_data$citation))
+sum(is.na(tsg_data$`T intern [°C]`))
+sum(is.na(tsg_data$`Temp [°C] (Digital oceanographic thermom...)`))
+sum(is.na(tsg_data$`T intern [°C] (Thermosalinograph, Sea-Bird, ...)`))
+sum(is.na(tsg_data$`Temp [°C]`))
+sum(is.na(tsg_data$`T intern [°C] (Thermosalinograph (TSG), Sea-...)`))
+
+print(unique(tsg_data$`Depth water [m]`))
+print(mean(tsg_data$`Temp [°C] (Digital oceanographic thermom...)`, na.rm=TRUE))
+print(mean(tsg_data$`T intern [°C] (Thermosalinograph, Sea-Bird, ...)`, na.rm=TRUE))
+print(mean(tsg_data$`Temp [°C]`, na.rm=TRUE))
+print(mean(tsg_data$`T intern [°C]`, na.rm=TRUE))
+print(mean(tsg_data$`T intern [°C] (Thermosalinograph (TSG), Sea-...)`, na.rm=TRUE))
+tail(tsg_data)
+str(tsg_data)
+
+```
+
+
+# Clean tsg_data
+
+
+```{r}
+# Check column names for duplicity
+names(tsg_data)
+```
+
+## Remove duplicate column names (using unite(): returns chr)
+
+- everything including "Cond" in 1 column
+- everything including "QF sal" in 1 column
+- everything including "QF water temp" in 1 column
+- everything including Temp in 1 column
+- everything including "Sal" + "Sal(Calculated..)" in 1 column
+
+```{r}
+
+tsg_data <- unite(data = tsg_data, col = "Cond [mS/cm]", `Cond [mS/cm] (Thermosalinograph, Sea-Bird, ...)`, `Cond [mS/cm] (Thermosalinograph (TSG), Sea-...)`, 
+                  `Cond [mS/cm]`, na.rm = TRUE, sep = ",")
+tsg_data <- unite(data = tsg_data, col = "QF Sal", `QF sal (Salinity QC flag meanings:0:n...)`, `QF sal (Salinity QC flag meanings: 0:...)`, 
+                  `QF sal`, na.rm = TRUE, sep = ",")
+tsg_data <- unite(data = tsg_data, col = "QF water temp", `QF water temp`, `QF water temp (Temperature QC flag meanings:...)`, na.rm = TRUE, sep = ",")
+tsg_data <- unite(data = tsg_data, col = "Sal", `Sal`, `Sal (Calculated from temperature a...)`, `Sal (Calculated from internal temp...)`, na.rm = TRUE, sep = ",")
+tsg_data <- unite(data = tsg_data, col = "Temp [°C]", `Temp [°C] (Digital oceanographic thermom...)`, `Temp [°C]`, `T intern [°C]`, `T intern [°C] (Thermosalinograph, Sea-Bird, ...)`, `T intern [°C] (Thermosalinograph (TSG), Sea-...)`,  na.rm = TRUE, sep = ",")
+
+
+```
+
+```{r}
+# save current state to backup:
+cleaned_tsg_data <- tsg_data
+
+```
+
+## Mean temperature in Temp [°C]
+
+- Split up temperature values into 2 temporary columns in case there is more than 1 value
+- clean potential blank spaces
+
+```{r}
+tsg_data <- tsg_data %>%
+  separate_wider_delim(
+    cols = `Temp [°C]`,
+    delim = ",",
+    names = c("temp1", "temp2"),
+    too_few = "align_start",
+    too_many = "drop"
+  ) 
+```
+
+- calculate mean temperature from temp1 and temp2 (need to be numeric) and save to Temp [°C]
+
+```{r}
+ tsg_data <- tsg_data %>%
+  mutate(across(c(temp1, temp2), as.numeric)) %>%
+  mutate(temp_mean = rowMeans(across(c(temp1, temp2)), na.rm = TRUE)) %>%
+ # final temp column: takes either mean of temp1 and temp 2, or either one in case of only 1 value
+  mutate(`Temp [°C]` = coalesce(temp_mean, temp1, temp2))
+
+```
+
+```{r}
+# Backup of dataframe with temperature sorted
+temps_cleaned <- tsg_data
+```
+
+## Remove unnecessary columns
+
+- **Sal (Salinometer)** not needed
+- **MC** not needed 
+- **temporary temperature** columns not needed
+
+```{r}
+names(tsg_data)
+tsg_data <- tsg_data[,c(1:4, 7:10, 13:14, 17)]
+
+```
+
+## Filter **QF** = 1 (quality flag)
+
+```{r}
+tsg_data <- filter(tsg_data, tsg_data$`QF water temp` == 1, tsg_data$`QF Sal` == 1)
+# check results: 
+unique(tsg_data$`QF Sal`)
+unique((tsg_data$`QF water temp`))
+```
+
+# Save final data frame
+
+```{r}
+
+folderpath <- (paste0(getwd(),"/"))
+write.table(tsg_data, paste0(folderpath, "tsg_data_cleaned.txt"), sep = "\t", 
+            quote = FALSE, row.names = FALSE, na = "")
+```
+
